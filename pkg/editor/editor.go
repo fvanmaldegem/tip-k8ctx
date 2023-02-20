@@ -51,7 +51,6 @@ func openFileInDefaultEditor(f *os.File) {
 	if err := cmd.Run(); err != nil {
 		panic("oops")
 	}
-	fmt.Println(cmd.String())
 }
 
 func getEditor() string {
