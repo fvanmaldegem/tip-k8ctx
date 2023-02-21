@@ -21,6 +21,11 @@ type App struct {
 func New(kubeConfigPath, newConfigPath, newContextName string, force bool) App {
 	var err error
 	var k kubeconfig.KubeConfig
+
+	if newContextName == "" {
+		log.Fatal("please specify a name for the context")
+	}
+
 	if kubeConfigPath == "" {
 		k, kubeConfigPath, err = kubeconfig.NewFromDefault()
 		if err != nil {
@@ -35,7 +40,7 @@ func New(kubeConfigPath, newConfigPath, newContextName string, force bool) App {
 
 	var kn kubeconfig.KubeConfig
 	if newConfigPath == "" {
-		kn, err = kubeconfig.New(editor.OpenAndRead())
+		kn, err = kubeconfig.NewFromYaml(editor.OpenAndRead())
 		if err != nil {
 			log.WithError(err).Fatal("could not load kubeconfig")
 		}
@@ -72,8 +77,14 @@ func (a *App) Run() {
 
 		if override {
 			a.existingConfig.OverrideClusterByName(a.newContextName, a.newConfig.Clusters[0])
+
+			a.newConfig.Contexts[0].Context.User = a.newContextName
+			a.newConfig.Contexts[0].Context.Cluster = a.newContextName
 			a.existingConfig.OverrideContextByName(a.newContextName, a.newConfig.Contexts[0])
+
 			a.existingConfig.OverrideUserByName(a.newContextName, a.newConfig.Users[0])
+
+			a.existingConfig.WriteToFile(a.existingConfigPath)
 		}
 
 		return

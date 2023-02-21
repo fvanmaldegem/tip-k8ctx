@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 
+	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -78,33 +79,84 @@ func (k *KubeConfig) GetUserByName(name string) (*User, error) {
 	return nil, ErrUserNotFound
 }
 
+func (k *KubeConfig) GetClusterIndexByName(name string) (int, error) {
+	for i, c := range k.Clusters {
+		if c.Name == name {
+			return i, nil
+		}
+	}
+	return -1, ErrClusterNotFound
+}
+
+func (k *KubeConfig) GetContextIndexByName(name string) (int, error) {
+	for i, c := range k.Contexts {
+		if c.Name == name {
+			return i, nil
+		}
+	}
+	return -1, ErrContextNotFound
+}
+
+func (k *KubeConfig) GetUserIndexByName(name string) (int, error) {
+	for i, u := range k.Users {
+		if u.Name == name {
+			return i, nil
+		}
+	}
+	return -1, ErrUserNotFound
+}
+
 func (k *KubeConfig) OverrideClusterByName(name string, cluster Cluster) error {
-	c, err := k.GetClusterByName(name)
+	i, err := k.GetClusterIndexByName(name)
 	if err != nil {
 		return err
 	}
 
-	c.Cluster = cluster.Cluster
+	log.WithFields(log.Fields{
+		"name":       name,
+		"oldCluster": k.Clusters[i].Cluster,
+		"newCluster": cluster,
+	}).Debug("overriding cluster")
+
+	k.Clusters[i].Cluster = cluster.Cluster
+	k.Clusters[i].Name = name
+
 	return nil
 }
 
 func (k *KubeConfig) OverrideContextByName(name string, context Context) error {
-	c, err := k.GetContextByName(name)
+	i, err := k.GetContextIndexByName(name)
 	if err != nil {
 		return err
 	}
 
-	c.Context = context.Context
+	log.WithFields(log.Fields{
+		"name":       name,
+		"oldContext": k.Contexts[i].Context,
+		"newContext": context,
+	}).Debug("overriding context")
+
+	k.Contexts[i].Context = context.Context
+	k.Contexts[i].Name = name
+
 	return nil
 }
 
 func (k *KubeConfig) OverrideUserByName(name string, user User) error {
-	c, err := k.GetUserByName(name)
+	i, err := k.GetUserIndexByName(name)
 	if err != nil {
 		return err
 	}
 
-	c.User = user.User
+	log.WithFields(log.Fields{
+		"name":    name,
+		"oldUser": k.Users[i].User,
+		"newUser": user,
+	}).Debug("overriding user")
+
+	k.Users[i].User = user.User
+	k.Users[i].Name = name
+
 	return nil
 }
 
@@ -114,6 +166,7 @@ func (k *KubeConfig) WriteToFile(path string) error {
 		return err
 	}
 
+	log.WithField("path", path).Debug("writing kubeconfig")
 	err = os.WriteFile(path, v, 0666)
 	if err != nil {
 		return err
@@ -123,17 +176,17 @@ func (k *KubeConfig) WriteToFile(path string) error {
 }
 
 func NewFromPath(p string) (KubeConfig, error) {
-	k := KubeConfig{}
+	k := New()
 	f, err := os.ReadFile(p)
 	if err != nil {
 		return k, fmt.Errorf("could not open file '%s': %w", p, err)
 	}
 
-	return New(f)
+	return NewFromYaml(f)
 }
 
-func New(i []byte) (KubeConfig, error) {
-	k := KubeConfig{}
+func NewFromYaml(i []byte) (KubeConfig, error) {
+	k := New()
 	err := yaml.Unmarshal(i, &k)
 	if err != nil {
 		return k, fmt.Errorf("could not unmarshal kubeconfig: %w", err)
@@ -143,7 +196,7 @@ func New(i []byte) (KubeConfig, error) {
 }
 
 func NewFromDefault() (KubeConfig, string, error) {
-	k := KubeConfig{}
+	k := New()
 	var err error
 	var p string
 
@@ -162,4 +215,16 @@ func NewFromDefault() (KubeConfig, string, error) {
 	p = path.Join(home, "/.kube/config")
 	k, err = NewFromPath(p)
 	return k, p, err
+}
+
+func New() KubeConfig {
+	return KubeConfig{
+		ApiVersion:     "v1",
+		Clusters:       []Cluster{},
+		Users:          []User{},
+		Contexts:       []Context{},
+		CurrentContext: "",
+		Kind:           "Config",
+		Preferences:    make(map[string]string),
+	}
 }
